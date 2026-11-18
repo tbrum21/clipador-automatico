@@ -38,14 +38,14 @@ class HourlyRecorder:
             completed = False
             try:
                 sl = subprocess.Popen([C.STREAMLINK, '--stdout', '--loglevel', 'error',
-                                       f'twitch.tv/{self.channel}', C.STREAM_QUALITY], stdout=subprocess.PIPE,
+                                       f'twitch.tv/{self.channel}', C.HOURLY_STREAM_QUALITY], stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL)
                 ff = subprocess.Popen([C.FFMPEG, '-y', '-hide_banner', '-loglevel', 'error', '-i', 'pipe:0',
                                        '-t', '3600', '-c', 'copy', '-f', 'mpegts', str(partial)],
                                       stdin=sl.stdout, stderr=subprocess.DEVNULL)
                 sl.stdout.close()
                 self.procs = [ff, sl]
-                log.info('gravacao de uma hora iniciada para %s', self.channel)
+                log.info('gravacao de uma hora iniciada para %s (qualidade solicitada: %s)', self.channel, C.HOURLY_STREAM_QUALITY)
                 code = ff.wait()
                 if sl.poll() is None:
                     sl.terminate()

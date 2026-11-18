@@ -19,6 +19,7 @@ for _d in (BUFFER_DIR, WORK_DIR, OUT_DIR, APPROVED_DIR):
 
 CHANNEL = os.getenv("TWITCH_CHANNEL", "").strip().lower().lstrip("#")
 STREAM_QUALITY = os.getenv("STREAM_QUALITY", "720p60,720p,best")
+HOURLY_STREAM_QUALITY = os.getenv("HOURLY_STREAM_QUALITY", "best").strip() or "best"
 
 FFMPEG = os.getenv("FFMPEG_PATH", "ffmpeg")
 FFPROBE = os.getenv("FFPROBE_PATH", "ffprobe")

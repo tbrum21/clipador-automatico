@@ -74,9 +74,9 @@ chat; a edicao usa uma unica fila compartilhada e um unico bot do Telegram. Uma 
 nao impede as demais: sua captura tentara reconectar. Consulte os logs para verificar cada
 conexao; o indicador de monitoramento significa que o processo esta ativo, nao que todas as
 lives estejam online. Para mudar a lista, pare o monitoramento e inicie novamente.
-Cada canal tambem abre uma segunda conexao de video para gravar blocos de uma hora. Tres canais
+Quando os dois modos estao ativos, cada canal tambem abre uma segunda conexao de video para gravar blocos de uma hora. Tres canais
 podem portanto usar ate seis fluxos de video, alem de disco e CPU. Se a maquina ficar
-sobrecarregada, reduza o numero de canais ou a qualidade. As configuracoes sao compartilhadas.
+sobrecarregada, reduza o numero de canais ou a qualidade no `.env`.
 
 Preencha tambem `TWITCH_CHANNEL` no `.env` e confirme que o canal esta ao vivo:
 
@@ -248,7 +248,14 @@ pare e inicie novamente. Apenas picos usam o buffer de live e o chat; apenas gra
 o Telegram. Trabalhos por pico pendentes aguardam a proxima ativacao de picos; gravacoes ja
 concluidas continuam na fila automatica mesmo se a gravacao de novas horas estiver desativada.
 
-Quando as gravacoes de uma hora estao ativadas, cada canal grava blocos em `data/hourly/`. Quando um
+Quando as gravacoes de uma hora estao ativadas, cada canal grava blocos em `data/hourly/`.
+Por padrao, `HOURLY_STREAM_QUALITY=best` seleciona a melhor qualidade disponibilizada pela
+Twitch para aquela live (por exemplo, 1080p quando disponivel), sem recodificar o video
+original. A resolucao depende da transmissao e pode ser inferior a HD; maior qualidade tambem
+exige mais rede e espaco em disco, especialmente para tres canais. Essa escolha e independente
+de `STREAM_QUALITY`, usada no buffer de picos. Para limitar a qualidade das gravacoes, ajuste
+`HOURLY_STREAM_QUALITY` no `.env` e recrie o container. A mudanca vale para novas gravacoes.
+Quando um
 bloco e concluido e convertido em MP4, ele entra automaticamente na fila de analise; o provedor
 de IA escolhido recebe sua transcricao e pode gerar custo. As tarefas pesadas sao serializadas
 com a edicao dos cortes de pico. A fila compartilhada atende os trabalhos pesados por ordem
