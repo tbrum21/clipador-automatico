@@ -178,6 +178,12 @@ Acesse `http://localhost:8000` e abra **Edicao**. E possivel ativar ou desativar
 escolher entre destaque amarelo, Pop animado e Clean branco, ativar o zoom e adicionar uma
 marca-d'agua em texto nos quatro cantos. Clique em **Salvar configuracoes**; as escolhas ficam
 em `data/edit-settings.json` e sao carregadas no inicio do processamento de cada novo corte.
+
+Em **Formato e fundo**, escolha saida vertical 9:16 (1080x1920) ou horizontal 16:9
+(1920x1080), e fundo preto ou desfocado para as areas livres. No formato vertical o quadro
+da live e preservado dentro do video vertical; no horizontal a imagem original ocupa o quadro,
+sem recorte separado da facecam. Se a imagem original ja for 16:9, o fundo horizontal nao sera
+visivel, porque nao havera espaco livre. A previa do Telegram acompanha o formato escolhido.
 Alterar as opcoes nao modifica cortes ja processados ou que ja comecaram a ser processados.
 Desativar as legendas nao desativa a transcricao, usada na etapa opcional de IA. A marca atual
 e texto, nao um arquivo de imagem. O painel mostra uma previa ilustrativa do estilo.
@@ -236,10 +242,21 @@ manual exige monitoramento parado. A renderizacao pode esperar na fila mesmo dur
 
 ### Gravacao automatica por hora
 
-Ao iniciar o monitoramento, cada canal grava blocos de uma hora em `data/hourly/`. Quando um
+Em **Monitoramento**, selecione **Picos do chat**, **Gravacoes de 1 hora** ou ambas as opcoes
+antes de iniciar. A escolha vale para todos os canais e fica salva para a retomada. Para mudar,
+pare e inicie novamente. Apenas picos usam o buffer de live e o chat; apenas gravacoes dispensa
+o Telegram. Trabalhos por pico pendentes aguardam a proxima ativacao de picos; gravacoes ja
+concluidas continuam na fila automatica mesmo se a gravacao de novas horas estiver desativada.
+
+Quando as gravacoes de uma hora estao ativadas, cada canal grava blocos em `data/hourly/`. Quando um
 bloco e concluido e convertido em MP4, ele entra automaticamente na fila de analise; o provedor
 de IA escolhido recebe sua transcricao e pode gerar custo. As tarefas pesadas sao serializadas
-com a edicao dos cortes de pico. Na secao **Gravacoes**, examine as sugestoes, rejeite as que
+com a edicao dos cortes de pico. A fila compartilhada atende os trabalhos pesados por ordem
+de chegada; a analise libera o recurso entre blocos de ate cinco minutos, voltando ao fim da
+fila para o proximo bloco. A secao **Fila de cortes** mostra a ordem atual e o tempo decorrido,
+sem prever quando cada tarefa terminara. Cortes de pico ainda podem esperar a conclusao do
+bloco em andamento, e a fila pode crescer se a chegada de trabalho superar a capacidade do PC.
+Na secao **Gravacoes**, examine as sugestoes, rejeite as que
 nao quiser e renderize as demais; depois aprove ou rejeite os cortes gerados em **Cortes**.
 
 O original automatico e excluido permanentemente somente depois que houver pelo menos uma

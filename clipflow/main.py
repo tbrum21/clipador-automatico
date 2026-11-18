@@ -21,8 +21,8 @@ from .resource_guard import heavy_work
 log = logging.getLogger("main")
 
 
-def render_serialized(*args, **kwargs):
-    with heavy_work():
+def render_serialized(*args, queue_description='Corte por pico', **kwargs):
+    with heavy_work('pico', queue_description):
         return run_from_raw(*args, **kwargs)
 
 
@@ -34,7 +34,8 @@ async def worker(queue: asyncio.Queue, capture: Capture, bot):
             settings = validate_edit_settings(info.get('settings', {}))
             channel = info.get('channel', C.CHANNEL)
             res = await asyncio.to_thread(render_serialized, raw, raw.parent, settings['context_before'], channel,
-                                          on_stage=lambda stage: db.update_job(job_id, stage), settings=settings)
+                                          on_stage=lambda stage: db.update_job(job_id, stage), settings=settings,
+                                          queue_description=f'Pico #{job_id} · @{channel}')
             clip_id = db.add_clip(channel, res["out"], res["title"], res["score"],
                                   method=res['method'], provider=res.get('provider'), model=res.get('model'), decision=res.get('decision'))
             db.update_job(job_id, 'enviando', clip_id=clip_id)
@@ -80,24 +81,31 @@ async def amain():
     channels = [s.strip().lower() for s in os.getenv('TWITCH_CHANNELS', C.CHANNEL).split(',') if s.strip()]
     if not channels or len(channels) > 3 or len(set(channels)) != len(channels) or any(not re.fullmatch(r'[a-z0-9_]{1,25}', s) for s in channels):
         raise SystemExit("Defina TWITCH_CHANNEL no .env")
-    if not (C.TELEGRAM_TOKEN and C.TELEGRAM_CHAT_ID):
+    peaks_enabled = os.getenv('CLIPFLOW_PEAKS', '1') == '1'
+    recordings_enabled = os.getenv('CLIPFLOW_RECORDINGS', '1') == '1'
+    if not (peaks_enabled or recordings_enabled):
+        raise SystemExit('Ative ao menos um tipo de corte.')
+    if peaks_enabled and not (C.TELEGRAM_TOKEN and C.TELEGRAM_CHAT_ID):
         raise SystemExit("Defina TELEGRAM_TOKEN e TELEGRAM_CHAT_ID no .env")
 
-    captures = {channel: Capture(channel) for channel in channels}
-    hourly = {channel: HourlyRecorder(channel) for channel in channels}
+    captures = {channel: Capture(channel) for channel in channels} if peaks_enabled else {}
+    hourly = {channel: HourlyRecorder(channel) for channel in channels} if recordings_enabled else {}
     for capture in captures.values():
         capture.start()
     for recorder in hourly.values():
         recorder.start()
-    app = build_app()
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
+    app = build_app() if peaks_enabled else None
+    if app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
 
-    detectors = {channel: PeakDetector() for channel in channels}
+    detectors = {channel: PeakDetector() for channel in channels} if peaks_enabled else {}
     queue: asyncio.Queue = asyncio.Queue()
     extraction_lock = asyncio.Semaphore(1)
     for job in reversed(db.list_jobs(1000)):
+        if not peaks_enabled:
+            break  # trabalhos antigos ficam guardados ate o fluxo de picos ser retomado
         if job['channel'] not in channels:
             continue
         if job['status'] in ('detectado', 'extraindo'):
@@ -116,13 +124,15 @@ async def amain():
             queue.put_nowait((job['id'], raw, info))
         else:
             db.update_job(job['id'], 'erro', error='Trecho bruto nao encontrado apos reinicio.')
-    tasks = [asyncio.create_task(run_chat(channel, detectors[channel].add_message)) for channel in channels]
-    tasks.append(asyncio.create_task(worker(queue, None, app.bot)))
-    await app.bot.send_message(C.TELEGRAM_CHAT_ID, 'ClipFlow ligado. Monitorando: ' + ', '.join('twitch.tv/' + channel for channel in channels))
+    tasks = [asyncio.create_task(run_chat(channel, detectors[channel].add_message)) for channel in channels] if peaks_enabled else []
+    if app:
+        tasks.append(asyncio.create_task(worker(queue, None, app.bot)))
+        await app.bot.send_message(C.TELEGRAM_CHAT_ID, 'ClipFlow ligado. Monitorando: ' + ', '.join('twitch.tv/' + channel for channel in channels))
+    log.info('monitoramento iniciado: picos=%s, gravacoes=%s', peaks_enabled, recordings_enabled)
     try:
         while True:
             await asyncio.sleep(C.WINDOW_SECONDS)
-            for channel in channels:
+            for channel in detectors:
                 peak = detectors[channel].tick(datetime.now())
                 if peak:
                     log.info("PICO %s: z=%.1f, %d msgs", channel, peak["z"], peak["msgs"])
@@ -134,9 +144,10 @@ async def amain():
             capture.stop()
         for recorder in hourly.values():
             recorder.stop()
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+        if app:
+            await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
 
 
 def run():

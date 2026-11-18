@@ -38,15 +38,17 @@ class RecordingTests(unittest.TestCase):
             (inputs / 'live.mp4').write_bytes(b'sample')
             work = root / 'work'; work.mkdir()
             settings = dict(edit_settings.DEFAULTS, min_duration=15, max_duration=90)
-            with patch.object(config, 'DB_PATH', root / 'test.db'), patch.object(config, 'WORK_DIR', work), \
+            with patch.object(config, 'DB_PATH', root / 'test.db'), patch.object(config, 'WORK_DIR', work), patch.object(config, 'DATA', root), \
                  patch.object(recordings, 'INPUT', inputs), patch.object(recordings, 'probe_duration', return_value=600), \
                  patch.object(recordings.subprocess, 'run'), patch.object(recordings, 'transcribe', return_value=[Word('oi',1,2)]), \
-                 patch.object(recordings, 'analyze_block', side_effect=lambda *args: [{'start':10.,'end':30.,'title':'Bom','score':80,'reason':'Surpresa'}]) as ai:
+                 patch.object(recordings, 'analyze_block', side_effect=lambda *args: [{'start':10.,'end':30.,'title':'Bom','score':80,'reason':'Surpresa'}]) as ai, \
+                 patch.object(recordings, 'heavy_work', wraps=recordings.heavy_work) as guard:
                 with db._conn() as c:
                     analysis_id = c.execute('INSERT INTO recording_analyses (created,filename,status,progress,provider,settings) VALUES (?,?,?,?,?,?)',
                         ('2026','live.mp4','aguardando','', 'openai', json.dumps(settings))).lastrowid
                 recordings._analyze(analysis_id)
                 self.assertEqual(ai.call_count, 3)  # 300s com sobreposicao de 90s
+                self.assertEqual(guard.call_count, 3)  # cada bloco entra novamente na fila
                 analysis = recordings.list_analyses()[0]
                 self.assertEqual(analysis['status'], 'concluido')
                 self.assertEqual(len(analysis['candidates']), 3)
@@ -60,7 +62,7 @@ class RecordingTests(unittest.TestCase):
             root = Path(temp); inputs = root / 'input'; inputs.mkdir(); work = root / 'work'; work.mkdir()
             (inputs / 'live.mp4').write_bytes(b'original')
             settings = dict(edit_settings.DEFAULTS)
-            with patch.object(config, 'DB_PATH', root / 'test.db'), patch.object(config, 'WORK_DIR', work), \
+            with patch.object(config, 'DB_PATH', root / 'test.db'), patch.object(config, 'WORK_DIR', work), patch.object(config, 'DATA', root), \
                  patch.object(recordings, 'INPUT', inputs), patch.object(recordings.subprocess, 'run') as ffmpeg, \
                  patch.object(recordings, 'run_from_raw', return_value={'out':root / 'final.mp4'}) as pipeline:
                 with db._conn() as c:

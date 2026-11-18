@@ -17,24 +17,38 @@ from . import config as C, db
 from . import edit_settings
 from . import recordings
 from . import automatic
+from .resource_guard import queue_snapshot
 
 logs = deque(maxlen=500)
 lock = threading.RLock()
 process = None
 channel = C.CHANNEL
 channels = [C.CHANNEL] if C.CHANNEL else []
+monitor_modes = {'peaks': True, 'recordings': True}
 running = False
 PAUSED_PATH = C.DATA / 'monitor-paused'
+MODES_PATH = C.DATA / 'dashboard-modes.json'
 
 
-def start(names):
-    global process, channel, channels, running
+def validate_modes(modes):
+    if not isinstance(modes, dict) or set(modes) != {'peaks', 'recordings'} or any(type(modes[k]) is not bool for k in modes):
+        raise ValueError('Selecione opcoes validas de monitoramento.')
+    if not any(modes.values()):
+        raise ValueError('Selecione pelo menos um tipo de corte.')
+    return dict(modes)
+
+
+def start(names, modes=None):
+    global process, channel, channels, running, monitor_modes
+    modes = validate_modes(modes if modes is not None else {'peaks': True, 'recordings': True})
     names = [names] if isinstance(names, str) else names
     if not isinstance(names, list) or not 1 <= len(names) <= 3 or not all(isinstance(x, str) for x in names):
         raise ValueError('Informe entre um e tres canais Twitch.')
     names = [re.sub(r'^https?://(?:www\.)?twitch\.tv/', '', name.strip().lower()).strip('/') for name in names]
     if any(not re.fullmatch(r'[a-z0-9_]{1,25}', name) for name in names) or len(set(names)) != len(names):
         raise ValueError('Informe canais Twitch validos e sem repeticao.')
+    if modes['peaks'] and not (C.TELEGRAM_TOKEN and C.TELEGRAM_CHAT_ID):
+        raise ValueError('Configure o Telegram para os cortes por pico.')
     with lock:
         if recordings.busy:
             raise ValueError('Aguarde a analise ou renderizacao da gravacao terminar.')
@@ -43,12 +57,16 @@ def start(names):
         env = os.environ.copy()
         env['TWITCH_CHANNEL'] = names[0]
         env['TWITCH_CHANNELS'] = ','.join(names)
+        env['CLIPFLOW_PEAKS'] = '1' if modes['peaks'] else '0'
+        env['CLIPFLOW_RECORDINGS'] = '1' if modes['recordings'] else '0'
         process = subprocess.Popen([sys.executable, '-u', '-m', 'clipflow.main'], env=env,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                    errors='replace', start_new_session=True)
         channel, channels, running = names[0], names, True
+        monitor_modes = modes
         (C.DATA / 'dashboard-channel.txt').write_text(names[0], encoding='utf-8')
         (C.DATA / 'dashboard-channels.json').write_text(json.dumps(names), encoding='utf-8')
+        MODES_PATH.write_text(json.dumps(modes), encoding='utf-8')
         PAUSED_PATH.unlink(missing_ok=True)
         threading.Thread(target=collect, args=(process,), daemon=True).start()
 
@@ -98,12 +116,14 @@ class Handler(BaseHTTPRequestHandler):
             with db._conn() as conn:
                 clips = [dict(row) for row in conn.execute('SELECT * FROM clips ORDER BY id DESC LIMIT 100')]
             with lock:
-                state = {'active': bool(process and process.poll() is None), 'channel': channel, 'channels': channels,
+                state = {'active': bool(process and process.poll() is None), 'channel': channel, 'channels': channels, 'modes': monitor_modes,
                          'clips': clips, 'logs': list(logs),
                          'ai_configured': bool(C.ANTHROPIC_API_KEY or C.OPENAI_API_KEY)}
             return self.respond(200, state)
         if path == '/api/jobs':
             return self.respond(200, db.list_jobs())
+        if path == '/api/processing':
+            return self.respond(200, queue_snapshot())
         if path == '/api/recordings':
             return self.respond(200, {'files': recordings.sources(), 'analyses': recordings.list_analyses(),
                                       'busy': recordings.busy})
@@ -154,7 +174,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Dados muito grandes')
             data = json.loads(self.rfile.read(length) or b'{}')
             if self.path == '/api/start':
-                start(data.get('channels', data.get('channel', '')))
+                start(data.get('channels', data.get('channel', '')), data.get('modes'))
             elif self.path == '/api/stop':
                 stop()
             elif self.path == '/api/edit-settings':
@@ -200,11 +220,16 @@ def main():
     name = saved.read_text(encoding='utf-8').strip() if saved.exists() else C.CHANNEL
     saved_channels = C.DATA / 'dashboard-channels.json'
     names = json.loads(saved_channels.read_text(encoding='utf-8')) if saved_channels.exists() else ([name] if name else [])
-    global channel, channels
+    global channel, channels, monitor_modes
     channels = names
     channel = names[0] if names else ''
-    if names and C.TELEGRAM_TOKEN and C.TELEGRAM_CHAT_ID and not PAUSED_PATH.exists():
-        start(names)
+    try:
+        monitor_modes = validate_modes(json.loads(MODES_PATH.read_text(encoding='utf-8'))) if MODES_PATH.exists() else {'peaks': True, 'recordings': True}
+    except (ValueError, OSError):
+        logging.warning('Opcoes salvas invalidas; usando ambos os tipos de corte.')
+        monitor_modes = {'peaks': True, 'recordings': True}
+    if names and (not monitor_modes['peaks'] or C.TELEGRAM_TOKEN and C.TELEGRAM_CHAT_ID) and not PAUSED_PATH.exists():
+        start(names, monitor_modes)
     server = ThreadingHTTPServer(('0.0.0.0', 8000), Handler)
     def shutdown(*_):
         threading.Thread(target=server.shutdown, daemon=True).start()

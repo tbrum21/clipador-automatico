@@ -164,9 +164,7 @@ def create_analysis(filename, settings):
 
 def _analyze(analysis_id):
     try:
-        _update(analysis_id, 'em_fila', 'Aguardando recursos de processamento')
-        with heavy_work():
-            _analyze_work(analysis_id)
+        _analyze_work(analysis_id)
     finally:
         release()
 
@@ -186,23 +184,24 @@ def _analyze_work(analysis_id):
         while offset < duration:
             index += 1
             length = min(BLOCK, duration - offset)
-            _update(analysis_id, 'transcrevendo', f'Bloco {index} · {offset/60:.1f} de {duration/60:.1f} min')
-            block = work / f'block_{index}'
-            block.mkdir(exist_ok=True)
-            audio = block / 'block.wav'
-            subprocess.run([C.FFMPEG, '-y', '-hide_banner', '-loglevel', 'error', '-ss', str(offset), '-t', str(length),
-                            '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], check=True)
-            try:
-                words = transcribe(audio, block)
-            finally:
-                # Sao arquivos intermediarios deste bloco; o video original e preservado.
-                audio.unlink(missing_ok=True)
-                (block / 'audio.wav').unlink(missing_ok=True)
-            _update(analysis_id, 'analisando', f'IA analisando bloco {index}')
-            for candidate in analyze_block(words, length, row['provider'], settings['min_duration'], settings['max_duration']):
-                candidate['start'] += offset
-                candidate['end'] += offset
-                candidates.append(candidate)
+            _update(analysis_id, 'em_fila', f'Bloco {index} · aguardando processamento · {offset/60:.1f} de {duration/60:.1f} min')
+            with heavy_work('gravacao', f'Gravacao #{analysis_id} · bloco {index}'):
+                _update(analysis_id, 'transcrevendo', f'Bloco {index} · {offset/60:.1f} de {duration/60:.1f} min')
+                block = work / f'block_{index}'
+                block.mkdir(exist_ok=True)
+                audio = block / 'block.wav'
+                subprocess.run([C.FFMPEG, '-y', '-hide_banner', '-loglevel', 'error', '-ss', str(offset), '-t', str(length),
+                                '-i', str(source), '-vn', '-ac', '1', '-ar', '16000', str(audio)], check=True)
+                try:
+                    words = transcribe(audio, block)
+                finally:
+                    audio.unlink(missing_ok=True)
+                    (block / 'audio.wav').unlink(missing_ok=True)
+                _update(analysis_id, 'analisando', f'IA analisando bloco {index}')
+                for candidate in analyze_block(words, length, row['provider'], settings['min_duration'], settings['max_duration']):
+                    candidate['start'] += offset
+                    candidate['end'] += offset
+                    candidates.append(candidate)
             if offset + length >= duration:
                 break
             # A sobreposicao cobre a duracao maxima de um candidato, inclusive nas fronteiras.
@@ -234,7 +233,7 @@ def render_candidate(candidate_id):
 
 def _render(candidate_id):
     try:
-        with heavy_work():
+        with heavy_work('renderizacao', f'Corte da gravacao #{candidate_id}'):
             _render_work(candidate_id)
     finally:
         release()

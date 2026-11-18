@@ -2,11 +2,17 @@ const queueSection = document.createElement('section');
 queueSection.className = 'card section';
 queueSection.style.marginTop = '20px';
 queueSection.id = 'queue';
-queueSection.innerHTML = '<div class="sectionhead"><div><h2>Fila de processamento</h2><p>Veja cada momento desde a detecção até o envio.</p></div><span class="count" id="queue-count">—</span></div><div id="queue-list" aria-live="polite">Carregando...</div>';
+queueSection.innerHTML = '<div class="sectionhead"><div><h2>Fila de processamento</h2><p>Acompanhe o recurso compartilhado e os cortes por pico.</p></div><span class="count" id="queue-count">—</span></div><h3>Processamento compartilhado</h3><p class="hint">Ordem de chegada ao processamento pesado. Novos blocos e cortes entram no final da fila; o tempo exibido é decorrido, não uma previsão.</p><div id="processing-list" aria-live="polite">Carregando...</div><h3 style="margin-top:24px">Cortes por pico</h3><div id="queue-list" aria-live="polite">Carregando...</div>';
 document.querySelector('.layout').before(queueSection);
 document.querySelector('.nav').insertAdjacentHTML('beforeend', '<a href="#queue">◷ &nbsp; Fila de cortes</a>');
 const jobLabels = {detectado:'Pico detectado', extraindo:'Salvando trecho', na_fila:'Na fila', transcrevendo:'Transcrevendo', analisando:'Analisando', renderizando:'Renderizando', gerando_previa:'Gerando prévia', enviando:'Enviando ao Telegram', enviado:'Enviado', erro:'Erro'};
 async function refreshQueue() {
+  try {
+    const response = await fetch('/api/processing');
+    if (!response.ok) throw Error();
+    const items = await response.json();
+    document.getElementById('processing-list').innerHTML = items.length ? items.map(item => `<div class="job-row"><div><strong>${esc(item.description)}</strong><small>Na fila há ${Math.floor(item.elapsed_seconds / 60)} min ${item.elapsed_seconds % 60} s</small></div><span class="job-pill">${item.position === 1 ? 'Em processamento' : 'Posição ' + item.position}</span></div>`).join('') : '<p class="hint">Nenhum processamento pesado no momento.</p>';
+  } catch (_) { document.getElementById('processing-list').textContent = 'Não foi possível carregar o processamento compartilhado.'; }
   try {
     const response = await fetch('/api/jobs');
     if (!response.ok) throw Error();

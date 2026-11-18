@@ -6,13 +6,13 @@ from .transcribe import Word
 
 HEADER = """[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {width}
+PlayResY: {height}
 WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,84,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,6,2,2,60,60,{margin},1
+Style: Default,Arial,{fontsize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,6,2,2,60,60,{margin},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -46,8 +46,11 @@ def _chunks(words, max_words=3, gap=0.6):
 
 
 def write_ass(words: list[Word], path: Path, margin_v: int = 380, style: str = 'highlight',
-              watermark: str = '', watermark_position: str = 'top_right', duration: float = 0):
-    lines = [HEADER.format(margin=margin_v)]
+              watermark: str = '', watermark_position: str = 'top_right', duration: float = 0,
+              orientation: str = 'vertical'):
+    horizontal = orientation == 'horizontal'
+    lines = [HEADER.format(margin=95 if horizontal else margin_v, width=1920 if horizontal else 1080,
+                           height=1080 if horizontal else 1920, fontsize=56 if horizontal else 84)]
     if watermark and duration > 0:
         align = {'top_left': 7, 'top_right': 9, 'bottom_left': 1, 'bottom_right': 3}[watermark_position]
         mark = re.sub(r'[{}\\\n]', '', watermark)

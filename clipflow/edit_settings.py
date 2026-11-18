@@ -8,7 +8,7 @@ PATH = C.DATA / 'edit-settings.json'
 DEFAULTS = {'subtitles': True, 'subtitle_style': 'highlight', 'zoom': C.ZOOM,
             'watermark': '', 'watermark_position': 'top_right', 'duration_mode': 'fixed',
             'context_before': 25, 'context_after': 10, 'min_duration': 15, 'max_duration': 55,
-            'ai_provider': 'openai'}
+            'ai_provider': 'openai', 'orientation': 'vertical', 'background': 'blur'}
 
 
 def validate(data):
@@ -27,6 +27,10 @@ def validate(data):
         raise ValueError('Modo de duracao invalido.')
     if data['ai_provider'] not in ('openai', 'anthropic'):
         raise ValueError('Provedor de IA invalido.')
+    if data['orientation'] not in ('vertical', 'horizontal'):
+        raise ValueError('Formato de video invalido.')
+    if data['background'] not in ('blur', 'black'):
+        raise ValueError('Fundo de video invalido.')
     for name, low, high in [('context_before', 5, 120), ('context_after', 5, 120),
                             ('min_duration', 5, 180), ('max_duration', 5, 180)]:
         if type(data[name]) is not int or not low <= data[name] <= high:

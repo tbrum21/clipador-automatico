@@ -9,7 +9,7 @@ from .editor import load_template, make_preview, render
 from .llm import default_decision, pause_decision, refine
 from .subtitles import write_ass
 from .transcribe import Word, transcribe
-from .edit_settings import load as load_edit_settings
+from .edit_settings import load as load_edit_settings, validate as validate_edit_settings
 
 log = logging.getLogger("pipeline")
 
@@ -26,7 +26,7 @@ def run_from_raw(raw: Path, workdir: Path, peak_offset: float, template_name: st
         if on_stage:
             on_stage(name)
     dur = probe_duration(raw)
-    settings = settings or load_edit_settings()
+    settings = validate_edit_settings(settings) if settings is not None else load_edit_settings()
     stage('transcrevendo')
     log.info("transcrevendo %.0fs de video...", dur)
     words = transcribe(raw, workdir)
@@ -47,7 +47,8 @@ def run_from_raw(raw: Path, workdir: Path, peak_offset: float, template_name: st
                for w in words if w.end > start and w.start < end]
     ass = workdir / "subs.ass"
     write_ass(shifted if settings['subtitles'] else [], ass, style=settings['subtitle_style'],
-              watermark=settings['watermark'], watermark_position=settings['watermark_position'], duration=end - start)
+              watermark=settings['watermark'], watermark_position=settings['watermark_position'], duration=end - start,
+              orientation=settings['orientation'])
 
     zoom_at = None
     if settings['zoom']:
@@ -57,10 +58,11 @@ def run_from_raw(raw: Path, workdir: Path, peak_offset: float, template_name: st
     out = C.OUT_DIR / f"{workdir.name}.mp4"
     log.info("renderizando %.0fs -> %s", end - start, out.name)
     stage('renderizando')
-    render(raw, start, end - start, ass.name, workdir, out, load_template(template_name), zoom_at)
+    render(raw, start, end - start, ass.name, workdir, out, load_template(template_name), zoom_at,
+           orientation=settings['orientation'], background=settings['background'])
     preview = workdir / "preview.mp4"
     stage('gerando_previa')
-    make_preview(out, preview)
+    make_preview(out, preview, orientation=settings['orientation'])
     return {"out": out, "preview": preview, "title": decision["title"],
             "score": decision["score"], "publish": decision["publish"], 'method': decision['method'],
             'provider': decision.get('provider'), 'model': decision.get('model'),
