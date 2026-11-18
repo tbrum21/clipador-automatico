@@ -1,0 +1,54 @@
+name: clipflow
+
+x-runtime: &runtime
+  image: clipflow:local
+  build: .
+  init: true
+  user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    # Caminhos do container prevalecem sobre configuracoes antigas do Windows.
+    FFMPEG_PATH: ffmpeg
+    FFPROBE_PATH: ffprobe
+    STREAMLINK_PATH: streamlink
+    WHISPER_BIN: /usr/local/bin/whisper-cli
+    WHISPER_MODEL: /models/ggml-${WHISPER_MODEL_NAME:-base}.bin
+    ENCODER: libx264
+  volumes:
+    - ./data:/app/data
+    - ./models:/models:ro
+    - ./input:/input:ro
+    - ./templates.json:/app/templates.json:ro
+  stop_signal: SIGINT
+  stop_grace_period: 60s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  clipflow:
+    <<: *runtime
+    command: [python, -m, clipflow.dashboard]
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  tools:
+    <<: *runtime
+    profiles: [tools]
+    command: [python, -m, clipflow.cli, check]
+
+  model:
+    image: clipflow:local
+    build: .
+    init: true
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    profiles: [setup]
+    volumes:
+      - ./models:/models
+    entrypoint: [python, /app/docker/download_model.py]
+    command: ["${WHISPER_MODEL_NAME:-base}"]

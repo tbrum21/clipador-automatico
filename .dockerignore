@@ -1,0 +1,10 @@
+*
+!requirements.txt
+!requirements.lock
+!clipflow/
+!clipflow/**
+!templates.json
+!docker/
+!docker/**
+**/__pycache__/
+**/*.pyc

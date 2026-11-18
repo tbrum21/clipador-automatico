@@ -1,0 +1,6 @@
+{
+  "default": { "facecam": null },
+  "exemplo_com_facecam": {
+    "facecam": { "x": 0.78, "y": 0.62, "w": 0.21, "h": 0.36 }
+  }
+}
